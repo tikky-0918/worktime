@@ -1,7 +1,7 @@
 {
   "name": "教练课时统计",
   "short_name": "课时统计",
-  "description": "记录教练上课情况，按月统计小班课人头与私教课时长",
+  "description": "记录教练上课情况，按月统计小班课人次与私教课时长",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

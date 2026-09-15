@@ -149,6 +149,23 @@ function computeSummary(startDate, endDate, coachIds) {
   return result;
 }
 
+// 私教课按时长（1h / 1.5h / 2h / 其他）分别统计节次，用于首页拆分展示
+function computePrivateDurationBreakdown(startDate, endDate, coachIds) {
+  const inRange = records.filter(r => r.form === 'private' && r.date >= startDate && r.date <= endDate && coachIds.includes(r.coachId));
+  const result = {};
+  coachIds.forEach(id => { result[id] = { h1: 0, h15: 0, h2: 0, other: 0 }; });
+  inRange.forEach(r => {
+    const bucket = result[r.coachId];
+    if (!bucket) return;
+    const h = r.hours || 0;
+    if (Math.abs(h - 1) < 1e-6) bucket.h1++;
+    else if (Math.abs(h - 1.5) < 1e-6) bucket.h15++;
+    else if (Math.abs(h - 2) < 1e-6) bucket.h2++;
+    else bucket.other++;
+  });
+  return result;
+}
+
 // ---------------------------------------------------------------------------
 // 视图切换（首页 / 录课 / 统计）
 // ---------------------------------------------------------------------------
@@ -180,16 +197,27 @@ function renderHome() {
   const { start, end } = thisMonthRange();
   const activeIds = coaches.map(c => c.id);
   const summary = computeSummary(start, end, activeIds);
+  const durBreak = computePrivateDurationBreakdown(start, end, activeIds);
   let headcountSum = 0, hoursSum = 0;
   Object.values(summary).forEach(s => {
     headcountSum += s.trialGroup + s.formalGroup;
     hoursSum += s.trialPrivate + s.formalPrivate;
   });
+  let durTotals = { h1: 0, h15: 0, h2: 0, other: 0 };
+  Object.values(durBreak).forEach(d => {
+    durTotals.h1 += d.h1; durTotals.h15 += d.h15; durTotals.h2 += d.h2; durTotals.other += d.other;
+  });
 
   document.getElementById('homeStatCards').innerHTML = `
-    <div class="stat-card"><div class="num">${fmtNum(headcountSum)}</div><div class="lbl">本月小班人头</div></div>
+    <div class="stat-card"><div class="num">${fmtNum(headcountSum)}</div><div class="lbl">本月小班人次</div></div>
     <div class="stat-card"><div class="num">${fmtNum(hoursSum)}</div><div class="lbl">本月私教时长(h)</div></div>
   `;
+
+  document.getElementById('homeDurationCards').innerHTML = `
+    <div class="stat-card"><div class="num">${fmtNum(durTotals.h1)}</div><div class="lbl">私教1h 节次</div></div>
+    <div class="stat-card"><div class="num">${fmtNum(durTotals.h15)}</div><div class="lbl">私教1.5h 节次</div></div>
+    <div class="stat-card"><div class="num">${fmtNum(durTotals.h2)}</div><div class="lbl">私教2h 节次</div></div>
+  ` + (durTotals.other > 0 ? `<div class="stat-card"><div class="num">${fmtNum(durTotals.other)}</div><div class="lbl">私教其他时长 节次</div></div>` : '');
 
   // 本月教练概况
   if (coaches.length === 0) {
@@ -197,12 +225,22 @@ function renderHome() {
   } else {
     coachOverviewList.innerHTML = coaches.map(c => {
       const s = summary[c.id] || { trialGroup: 0, trialPrivate: 0, formalGroup: 0, formalPrivate: 0 };
+      const d = durBreak[c.id] || { h1: 0, h15: 0, h2: 0, other: 0 };
       const groupSum = s.trialGroup + s.formalGroup;
       const privateSum = s.trialPrivate + s.formalPrivate;
+      const durParts = [];
+      if (d.h1) durParts.push(`1h×${fmtNum(d.h1)}`);
+      if (d.h15) durParts.push(`1.5h×${fmtNum(d.h15)}`);
+      if (d.h2) durParts.push(`2h×${fmtNum(d.h2)}`);
+      if (d.other) durParts.push(`其他×${fmtNum(d.other)}`);
+      const durLine = durParts.length ? `<div class="co-duration">${durParts.join(' · ')}</div>` : '';
       return `
         <div class="coach-overview-item" data-id="${c.id}">
-          <span class="co-name">${c.name}${c.status === 'disabled' ? '（已停用）' : ''}</span>
-          <span class="co-metrics"><span>小班 <b>${fmtNum(groupSum)}</b> 人头</span><span>私教 <b>${fmtNum(privateSum)}</b> h</span></span>
+          <div class="co-main">
+            <span class="co-name">${c.name}${c.status === 'disabled' ? '（已停用）' : ''}</span>
+            ${durLine}
+          </div>
+          <span class="co-metrics"><span>小班 <b>${fmtNum(groupSum)}</b> 人次</span><span>私教 <b>${fmtNum(privateSum)}</b> h</span></span>
         </div>`;
     }).join('');
     coachOverviewList.querySelectorAll('.coach-overview-item').forEach(el => {
@@ -544,8 +582,8 @@ function renderStats() {
       <table class="stats-table">
         <thead>
           <tr>
-            <th>教练</th><th>体验<br>小班人头</th><th>体验<br>私教h</th>
-            <th>正式<br>小班人头</th><th>正式<br>私教h</th><th>小班<br>合计</th><th>私教<br>合计h</th>
+            <th>教练</th><th>体验<br>小班人次</th><th>体验<br>私教h</th>
+            <th>正式<br>小班人次</th><th>正式<br>私教h</th><th>小班<br>合计</th><th>私教<br>合计h</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -686,7 +724,7 @@ exportBtn.addEventListener('click', () => {
 
   const summaryAOA = [
     [`月度汇总  ${start} 至 ${end}`],
-    ['教练', '体验-小班人头', '体验-私教时长(h)', '正式-小班人头', '正式-私教时长(h)', '小班合计人头', '私教合计时长(h)']
+    ['教练', '体验-小班人次', '体验-私教时长(h)', '正式-小班人次', '正式-私教时长(h)', '小班合计人次', '私教合计时长(h)']
   ];
   let tot = { tg: 0, tp: 0, fg: 0, fp: 0, gs: 0, ps: 0 };
   selectedCoaches.forEach(c => {

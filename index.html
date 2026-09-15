@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
 <link rel="manifest" href="manifest.json" />
 <title>教练课时统计</title>
-<link rel="stylesheet" href="style.css?v=4" />
+<link rel="stylesheet" href="style.css?v=5" />
 </head>
 <body>
 <div id="app">
@@ -24,6 +24,7 @@
     <!-- 首页：本月概览 + 教练概况 + 今日记录 -->
     <section id="view-home" class="view active">
       <div class="stat-cards" id="homeStatCards"></div>
+      <div class="stat-cards duration-cards" id="homeDurationCards"></div>
 
       <div class="quick-actions">
         <button type="button" id="quickEntryBtn" class="btn btn-primary btn-half">＋ 记一笔</button>
@@ -199,8 +200,8 @@
 
 </div>
 
-<script src="js/xlsx.full.min.js?v=4"></script>
-<script src="app.js?v=4" defer></script>
+<script src="js/xlsx.full.min.js?v=5"></script>
+<script src="app.js?v=5" defer></script>
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
