@@ -52,6 +52,9 @@ const DB = {
   },
   deleteRecord(id) {
     return deleteDoc(doc(fsdb, RECORDS_COL, id));
+  },
+  deleteCoach(id) {
+    return deleteDoc(doc(fsdb, COACHES_COL, id));
   }
 };
 
@@ -516,6 +519,7 @@ function renderCoaches() {
       <div class="ci-actions">
         <button data-action="rename">改名</button>
         <button data-action="toggle">${c.status === 'active' ? '停用' : '启用'}</button>
+        <button data-action="delete" class="ci-danger">删除</button>
       </div>
     </div>`).join('');
 
@@ -538,6 +542,20 @@ function renderCoaches() {
       c.status = c.status === 'active' ? 'disabled' : 'active';
       DB.updateCoach(c).catch(err => toast('更新失败：' + err.message));
       toast(c.status === 'active' ? '已启用' : '已停用（历史数据保留）');
+    });
+  });
+  coachListEl.querySelectorAll('[data-action="delete"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.closest('.coach-item').dataset.id;
+      const c = coaches.find(c => c.id === id);
+      const recordCount = records.filter(r => r.coachId === id).length;
+      if (recordCount > 0) {
+        alert(`"${c.name}" 名下还有 ${recordCount} 条课程记录，为避免统计数据错乱，暂不支持直接删除。\n如果这位教练已经离职，建议用"停用"，可以保留历史统计数据。`);
+        return;
+      }
+      if (!confirm(`确定删除教练"${c.name}"？该教练目前没有任何课程记录，删除后无法恢复。`)) return;
+      DB.deleteCoach(id).catch(err => toast('删除失败：' + err.message));
+      toast('已删除');
     });
   });
 }

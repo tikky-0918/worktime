@@ -303,6 +303,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
   font-family: inherit;
   color: var(--color-ink);
 }
+.ci-actions button.ci-danger { border-color: var(--color-danger); color: var(--color-danger); }
 
 /* ---------- Stats table ---------- */
 .range-picker { margin-bottom: 18px; }
