@@ -173,6 +173,8 @@ input[type="date"], input[type="month"] {
   box-sizing: border-box;
   font-size: 14px;
   padding-right: 8px;
+  -webkit-appearance: none;
+  appearance: none;
 }
 input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 
