@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<meta name="theme-color" content="#775537" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="课时统计" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<link rel="manifest" href="manifest.json" />
+<title>教练课时统计</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="app">
+
+  <header class="topbar">
+    <h1 id="pageTitle">今日概览</h1>
+  </header>
+
+  <main id="views">
+
+    <!-- 首页：本月概览 + 教练概况 + 今日记录 -->
+    <section id="view-home" class="view active">
+      <div class="stat-cards" id="homeStatCards"></div>
+
+      <div class="quick-actions">
+        <button type="button" id="quickEntryBtn" class="btn btn-primary btn-half">＋ 记一笔</button>
+        <button type="button" id="quickExportBtn" class="btn btn-outline btn-half">导出 Excel</button>
+      </div>
+
+      <div class="section-head">
+        <h2>本月教练概况</h2>
+      </div>
+      <div id="coachOverviewList" class="coach-overview-list"></div>
+
+      <div class="section-head">
+        <h2>今日记录</h2>
+      </div>
+      <div id="todayList" class="record-list"></div>
+    </section>
+
+    <!-- 录课页：录课表单 + 教练管理（可折叠） -->
+    <section id="view-entry" class="view">
+      <form id="entryForm" class="entry-form">
+        <input type="hidden" id="editingId" value="" />
+
+        <label class="field-label" for="coachSelect">教练</label>
+        <select id="coachSelect" class="select-input">
+          <option value="">请选择教练</option>
+        </select>
+        <p class="empty-hint" id="noCoachHint" style="display:none">
+          还没有教练 — 在下方"管理教练"里添加一位吧
+        </p>
+
+        <label class="field-label" for="dateInput">日期</label>
+        <input type="date" id="dateInput" class="text-input" required />
+
+        <label class="field-label">课程性质</label>
+        <div class="toggle-row" id="natureToggle">
+          <button type="button" class="toggle-btn active" data-value="trial">体验课</button>
+          <button type="button" class="toggle-btn" data-value="formal">正式课程</button>
+        </div>
+
+        <label class="field-label">课程形式</label>
+        <div class="toggle-row" id="formToggle">
+          <button type="button" class="toggle-btn active" data-value="group">小班课</button>
+          <button type="button" class="toggle-btn" data-value="private">私教课</button>
+        </div>
+
+        <div id="groupField" class="field-block">
+          <label class="field-label">本次上课人数</label>
+          <div class="stepper">
+            <button type="button" class="stepper-btn" data-step="-1">－</button>
+            <input type="number" id="headcountInput" class="stepper-input" value="1" min="0" step="1" />
+            <button type="button" class="stepper-btn" data-step="1">＋</button>
+          </div>
+        </div>
+
+        <div id="privateField" class="field-block" style="display:none">
+          <label class="field-label">本次时长（小时）</label>
+          <div class="chip-row">
+            <button type="button" class="quick-chip" data-hour="1">1h</button>
+            <button type="button" class="quick-chip" data-hour="1.5">1.5h</button>
+            <button type="button" class="quick-chip" data-hour="2">2h</button>
+          </div>
+          <div class="stepper">
+            <button type="button" class="stepper-btn" data-hstep="-0.5">－</button>
+            <input type="number" id="durationInput" class="stepper-input" value="1" min="0" step="0.5" />
+            <button type="button" class="stepper-btn" data-hstep="0.5">＋</button>
+          </div>
+        </div>
+
+        <label class="field-label" for="noteInput">备注（选填）</label>
+        <textarea id="noteInput" class="text-input" rows="2" placeholder="例如：新学员试课、请假补课等"></textarea>
+
+        <div class="form-actions">
+          <button type="button" id="deleteRecordBtn" class="btn btn-danger" style="display:none">删除该记录</button>
+          <button type="submit" id="submitEntryBtn" class="btn btn-primary">保存记录</button>
+        </div>
+      </form>
+
+      <div class="coach-manage">
+        <button type="button" id="toggleCoachManageBtn" class="link-btn">
+          管理教练 <span id="coachManageArrow">▾</span>
+        </button>
+        <div id="coachManagePanel" class="coach-manage-panel" style="display:none">
+          <div class="add-coach-row">
+            <input type="text" id="newCoachName" class="text-input" placeholder="输入教练姓名" />
+            <button id="addCoachBtn" class="btn btn-primary btn-compact">新增</button>
+          </div>
+          <div id="coachList" class="coach-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 统计页：范围选择 + 表格 + 导出入口 -->
+    <section id="view-stats" class="view">
+      <div class="range-picker">
+        <div class="toggle-row" id="rangeModeToggle">
+          <button type="button" class="toggle-btn active" data-mode="month">按月</button>
+          <button type="button" class="toggle-btn" data-mode="custom">自定义</button>
+        </div>
+        <div id="monthPickWrap" class="field-block">
+          <input type="month" id="statsMonth" class="text-input" />
+        </div>
+        <div id="customPickWrap" class="field-block" style="display:none">
+          <div class="range-row">
+            <input type="date" id="statsStart" class="text-input" />
+            <span class="range-sep">至</span>
+            <input type="date" id="statsEnd" class="text-input" />
+          </div>
+        </div>
+      </div>
+
+      <div class="stats-toolbar">
+        <button type="button" id="openExportBtn" class="btn btn-outline btn-compact">导出 Excel</button>
+      </div>
+
+      <div id="statsTableWrap"></div>
+    </section>
+
+  </main>
+
+  <nav class="tabbar">
+    <button class="tab-btn active" data-view="home">
+      <svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+      <span>首页</span>
+    </button>
+    <button class="tab-btn" data-view="entry">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      <span>录课</span>
+    </button>
+    <button class="tab-btn" data-view="stats">
+      <svg viewBox="0 0 24 24"><path d="M4 20V10M12 20V4M20 20v-7"/></svg>
+      <span>统计</span>
+    </button>
+  </nav>
+
+  <!-- 导出弹窗 -->
+  <div id="exportModal" class="modal-overlay" style="display:none">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>导出 Excel</h3>
+        <button type="button" id="closeExportBtn" class="modal-close" aria-label="关闭">×</button>
+      </div>
+
+      <div class="field-block">
+        <label class="field-label">导出时间段</label>
+        <div class="chip-row">
+          <button type="button" class="quick-chip" data-range="thisMonth">本月</button>
+          <button type="button" class="quick-chip" data-range="lastMonth">上月</button>
+        </div>
+        <div class="range-row">
+          <input type="date" id="exportStart" class="text-input" />
+          <span class="range-sep">至</span>
+          <input type="date" id="exportEnd" class="text-input" />
+        </div>
+      </div>
+
+      <div class="field-block">
+        <label class="field-label">导出教练</label>
+        <div id="exportCoachChecks" class="check-list"></div>
+      </div>
+
+      <div class="field-block">
+        <label class="field-label">导出内容</label>
+        <div class="toggle-row" id="exportContentToggle">
+          <button type="button" class="toggle-btn active" data-value="summary">仅汇总表</button>
+          <button type="button" class="toggle-btn" data-value="full">汇总+明细</button>
+        </div>
+      </div>
+
+      <button id="exportBtn" class="btn btn-primary btn-block">确认导出</button>
+      <p id="exportHint" class="empty-hint"></p>
+    </div>
+  </div>
+
+</div>
+
+<script src="js/xlsx.full.min.js"></script>
+<script src="app.js" defer></script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+</script>
+</body>
+</html>
