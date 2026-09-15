@@ -1,66 +1,58 @@
-/* app.js — 教练课时统计 PWA 核心逻辑（Firebase Firestore 实时同步，多台手机共享数据） */
+/* app.js — 教练课时统计 PWA 核心逻辑（腾讯云开发 CloudBase 实时同步，多台手机共享数据） */
 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
-import {
-  getAuth, signInAnonymously
-} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-import {
-  getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot,
-  enableIndexedDbPersistence
-} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+import cloudbase from "https://esm.sh/@cloudbase/js-sdk@3.9.4";
 
 // ---------------------------------------------------------------------------
-// Firebase 初始化：所有手机共用同一个云端 Firestore 数据库，
+// CloudBase 初始化：所有手机共用同一个云端数据库，
 // 任意一台手机的增删改都会实时推送到其他所有手机。
 // ---------------------------------------------------------------------------
-const firebaseConfig = {
-  apiKey: "AIzaSyDO8pAAMa8Z0ONCBghzP5HTB3bgqel57Vo",
-  authDomain: "worktime-d692b.firebaseapp.com",
-  projectId: "worktime-d692b",
-  storageBucket: "worktime-d692b.firebasestorage.app",
-  messagingSenderId: "781497875127",
-  appId: "1:781497875127:web:6affcb8637b6b71797eb32"
-};
+const CLOUDBASE_ENV = "worktime-d0g4mlkmp3769259b";
 
-const fbApp = initializeApp(firebaseConfig);
-const auth = getAuth(fbApp);
-const fsdb = getFirestore(fbApp);
-// 开启本地离线缓存：断网时仍可正常记录，联网后自动补传。
-// 多个标签页同时打开或浏览器不支持时会失败，静默忽略即可（仍可在线使用）。
-enableIndexedDbPersistence(fsdb).catch(() => {});
+const cbApp = cloudbase.init({ env: CLOUDBASE_ENV });
+const cbAuth = cbApp.auth({ persistence: 'local' });
+const cbdb = cbApp.database();
 
 const COACHES_COL = 'coaches';
 const RECORDS_COL = 'records';
 
+// CloudBase 的写入接口失败时不一定 reject，也可能 resolve 出 { code, message }，
+// 这里统一转成"失败就 reject"，配合下面各处的 .catch(...) 使用。
+function unwrap(promise) {
+  return promise.then(res => {
+    if (res && res.code) throw new Error(res.message || res.code);
+    return res;
+  });
+}
+
 const DB = {
   addCoach(name) {
-    return addDoc(collection(fsdb, COACHES_COL), { name, status: 'active', createdAt: Date.now() });
+    return unwrap(cbdb.collection(COACHES_COL).add({ name, status: 'active', createdAt: Date.now() }));
   },
   updateCoach(coach) {
     const { id, ...data } = coach;
-    return updateDoc(doc(fsdb, COACHES_COL, id), data);
+    return unwrap(cbdb.collection(COACHES_COL).doc(id).update(data));
   },
   addRecord(rec) {
     rec.createdAt = Date.now();
     rec.updatedAt = Date.now();
-    return addDoc(collection(fsdb, RECORDS_COL), rec);
+    return unwrap(cbdb.collection(RECORDS_COL).add(rec));
   },
   updateRecord(rec) {
     const { id, ...data } = rec;
     data.updatedAt = Date.now();
-    return updateDoc(doc(fsdb, RECORDS_COL, id), data);
+    return unwrap(cbdb.collection(RECORDS_COL).doc(id).update(data));
   },
   deleteRecord(id) {
-    return deleteDoc(doc(fsdb, RECORDS_COL, id));
+    return unwrap(cbdb.collection(RECORDS_COL).doc(id).remove());
   },
   deleteCoach(id) {
-    return deleteDoc(doc(fsdb, COACHES_COL, id));
+    return unwrap(cbdb.collection(COACHES_COL).doc(id).remove());
   }
 };
 
 // 写入/同步失败时用醒目的弹窗提示（而不是一闪而过的小提示），
 // 避免"数据其实没保存成功，但用户没注意到"的情况——
-// 常见原因是 Firebase 后台的安全规则或匿名登录没配置好。
+// 常见原因是 CloudBase 后台的安全规则或匿名登录没配置好。
 function reportError(action, err) {
   console.error(action, err);
   const detail = (err && err.message) ? err.message : String(err);
@@ -69,19 +61,25 @@ function reportError(action, err) {
 
 // 建立实时监听：任何一台手机的数据变化都会自动推送过来并刷新当前页面
 function startRealtimeSync() {
-  onSnapshot(collection(fsdb, COACHES_COL), snapshot => {
-    coaches = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
-      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-    if (currentView === 'entry') { renderCoaches(); renderCoachSelect(); }
-    if (currentView === 'home') renderHome();
-    if (currentView === 'stats') renderStats();
-  }, err => reportError('云端数据同步', err));
+  cbdb.collection(COACHES_COL).watch({
+    onChange: snapshot => {
+      coaches = snapshot.docs.map(d => ({ ...d, id: d._id }))
+        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      if (currentView === 'entry') { renderCoaches(); renderCoachSelect(); }
+      if (currentView === 'home') renderHome();
+      if (currentView === 'stats') renderStats();
+    },
+    onError: err => reportError('云端数据同步', err)
+  });
 
-  onSnapshot(collection(fsdb, RECORDS_COL), snapshot => {
-    records = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-    if (currentView === 'home') renderHome();
-    if (currentView === 'stats') renderStats();
-  }, err => reportError('云端数据同步', err));
+  cbdb.collection(RECORDS_COL).watch({
+    onChange: snapshot => {
+      records = snapshot.docs.map(d => ({ ...d, id: d._id }));
+      if (currentView === 'home') renderHome();
+      if (currentView === 'stats') renderStats();
+    },
+    onError: err => reportError('云端数据同步', err)
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -786,10 +784,9 @@ async function init() {
   dateInput.value = todayStr();
   resetEntryForNew();
   renderHome();
-  try {
-    await signInAnonymously(auth);
-  } catch (err) {
-    reportError('云端登录', err);
+  const { error } = await cbAuth.signInAnonymously();
+  if (error) {
+    reportError('云端登录', error);
     return;
   }
   startRealtimeSync();
