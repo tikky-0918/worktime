@@ -85,47 +85,6 @@ function startRealtimeSync() {
 }
 
 // ---------------------------------------------------------------------------
-// 旧版本机数据（升级前保存在本机 IndexedDB 里）一次性导入云端
-// ---------------------------------------------------------------------------
-function openLegacyDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open('coachStatsDB', 1);
-    req.onupgradeneeded = () => {};
-    req.onsuccess = (e) => resolve(e.target.result);
-    req.onerror = (e) => reject(e.target.error);
-  });
-}
-async function migrateLocalDataToCloud() {
-  const legacyDb = await openLegacyDB();
-  if (!legacyDb.objectStoreNames.contains('coaches') || !legacyDb.objectStoreNames.contains('records')) {
-    return { coaches: 0, records: 0 };
-  }
-  const readAll = (storeName) => new Promise((res, rej) => {
-    const r = legacyDb.transaction(storeName, 'readonly').objectStore(storeName).getAll();
-    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
-  });
-  const legacyCoaches = await readAll('coaches');
-  const legacyRecords = await readAll('records');
-
-  const idMap = {};
-  for (const c of legacyCoaches) {
-    const ref = await addDoc(collection(fsdb, COACHES_COL), {
-      name: c.name, status: c.status || 'active', createdAt: c.createdAt || Date.now()
-    });
-    idMap[c.id] = ref.id;
-  }
-  for (const r of legacyRecords) {
-    if (!(r.coachId in idMap)) continue;
-    await addDoc(collection(fsdb, RECORDS_COL), {
-      coachId: idMap[r.coachId], date: r.date, nature: r.nature, form: r.form,
-      headcount: r.headcount ?? null, hours: r.hours ?? null, note: r.note || '',
-      createdAt: r.createdAt || Date.now(), updatedAt: r.updatedAt || Date.now()
-    });
-  }
-  return { coaches: legacyCoaches.length, records: legacyRecords.length };
-}
-
-// ---------------------------------------------------------------------------
 // 全局状态
 // ---------------------------------------------------------------------------
 let coaches = [];
@@ -491,7 +450,6 @@ const coachManageArrow = document.getElementById('coachManageArrow');
 const newCoachName = document.getElementById('newCoachName');
 const addCoachBtn = document.getElementById('addCoachBtn');
 const coachListEl = document.getElementById('coachList');
-const migrateLocalBtn = document.getElementById('migrateLocalBtn');
 
 toggleCoachManageBtn.addEventListener('click', () => {
   coachManageOpen = !coachManageOpen;
@@ -560,28 +518,6 @@ function renderCoaches() {
       DB.deleteCoach(id).catch(err => reportError('删除教练', err));
       toast('已删除');
     });
-  });
-}
-
-// ---- 旧版本机数据一次性导入云端 ----
-if (migrateLocalBtn) {
-  if (localStorage.getItem('cloudMigrated_v1') === '1') {
-    migrateLocalBtn.style.display = 'none';
-  }
-  migrateLocalBtn.addEventListener('click', async () => {
-    if (!confirm('将把这台手机本地保存的历史教练和记录上传到云端，与其他手机的数据合并。仅需操作一次，确定继续吗？')) return;
-    migrateLocalBtn.disabled = true;
-    migrateLocalBtn.textContent = '正在导入…';
-    try {
-      const count = await migrateLocalDataToCloud();
-      toast(`已导入 ${count.coaches} 位教练、${count.records} 条记录`);
-      localStorage.setItem('cloudMigrated_v1', '1');
-      migrateLocalBtn.style.display = 'none';
-    } catch (err) {
-      reportError('导入本机历史数据', err);
-      migrateLocalBtn.disabled = false;
-      migrateLocalBtn.textContent = '导入本机历史数据到云端（仅需一次）';
-    }
   });
 }
 
