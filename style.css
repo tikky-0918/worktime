@@ -285,19 +285,21 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
   border-radius: var(--radius-card);
   padding: 12px 14px;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 10px;
 }
+.coach-item .ci-top { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
 .coach-item .ci-name { font-weight: 800; font-size: 15px; color: var(--color-ink); }
 .coach-item .ci-status { font-size: 11.5px; margin-left: 8px; padding: 3px 9px; border-radius: var(--radius-chip); font-weight: 700; color: var(--color-ink); }
 .coach-item .ci-status.active { background: var(--c3); }
 .coach-item .ci-status.disabled { background: var(--c2); }
 .coach-item .ci-actions { display: flex; gap: 8px; }
 .ci-actions button {
+  flex: 1;
   border: 1.5px solid var(--color-border);
   background: var(--color-surface);
   border-radius: var(--radius-btn);
-  padding: 6px 10px;
+  padding: 7px 6px;
   font-size: 12.5px;
   font-weight: 700;
   font-family: inherit;

@@ -512,7 +512,7 @@ function renderCoaches() {
   }
   coachListEl.innerHTML = coaches.map(c => `
     <div class="coach-item" data-id="${c.id}">
-      <div>
+      <div class="ci-top">
         <span class="ci-name">${c.name}</span>
         <span class="ci-status ${c.status}">${c.status === 'active' ? '在职' : '停用'}</span>
       </div>
