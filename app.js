@@ -1,6 +1,6 @@
 /* app.js — 教练课时统计 PWA 核心逻辑（腾讯云开发 CloudBase 实时同步，多台手机共享数据） */
 
-import cloudbase from "./js/cloudbase.bundle.js?v=12";
+import cloudbase from "./js/cloudbase.bundle.js?v=13";
 
 // ---------------------------------------------------------------------------
 // CloudBase 初始化：所有手机共用同一个云端数据库，
@@ -55,7 +55,12 @@ const DB = {
 // 常见原因是 CloudBase 后台的安全规则或匿名登录没配置好。
 function reportError(action, err) {
   console.error(action, err);
-  const detail = (err && err.message) ? err.message : String(err);
+  let detail;
+  if (err && typeof err.message === 'string' && err.message) {
+    detail = err.message;
+  } else {
+    try { detail = JSON.stringify(err); } catch (e) { detail = String(err); }
+  }
   alert(`${action}失败\n\n错误信息：${detail}\n\n请把这个提示截图发给开发者。`);
 }
 
