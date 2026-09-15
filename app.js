@@ -1,6 +1,6 @@
 /* app.js — 教练课时统计 PWA 核心逻辑（腾讯云开发 CloudBase 实时同步，多台手机共享数据） */
 
-import cloudbase from "https://esm.sh/@cloudbase/js-sdk@3.9.4";
+import cloudbase from "./js/cloudbase.bundle.js?v=12";
 
 // ---------------------------------------------------------------------------
 // CloudBase 初始化：所有手机共用同一个云端数据库，
