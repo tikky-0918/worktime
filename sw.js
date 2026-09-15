@@ -1,11 +1,11 @@
-const CACHE_NAME = "coach-stats-v2";
+const CACHE_NAME = "coach-stats-v3";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css",
-  "./app.js",
+  "./style.css?v=3",
+  "./app.js?v=3",
   "./manifest.json",
-  "./js/xlsx.full.min.js",
+  "./js/xlsx.full.min.js?v=3",
   "./icons/icon-192.png",
   "./icons/icon-512.png"
 ];
