@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CloudBase 连接测试</title>
+</head>
+<body style="font-family:sans-serif;padding:20px;font-size:16px;line-height:1.8;word-break:break-all;">
+<h3>CloudBase 连接测试（独立页面，不受主 App 影响）</h3>
+<div id="out">正在加载官方 SDK...</div>
+
+<script src="https://static.cloudbase.net/cloudbase-js-sdk/3.9.4/cloudbase.full.js"
+        onerror="document.getElementById('out').innerHTML='❌ 步骤1失败：官方 CDN（static.cloudbase.net）连不上，这台设备/网络访问不了这个地址'"></script>
+<script>
+  window.addEventListener('load', async () => {
+    const out = document.getElementById('out');
+    function log(msg) { out.innerHTML += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #ddd;">' + msg + '</div>'; }
+
+    if (typeof cloudbase === 'undefined') {
+      log('❌ 步骤1失败：SDK 没有加载成功（官方 CDN 大概率连不上）');
+      return;
+    }
+    log('✅ 步骤1成功：官方 CDN 的 SDK 加载成功');
+
+    try {
+      const app = cloudbase.init({ env: 'worktime-d0g4mlkmp3769259b', region: 'ap-shanghai' });
+      log('✅ 步骤2成功：init() 初始化成功');
+
+      const auth = app.auth({ persistence: 'local' });
+      log('正在尝试匿名登录...（步骤3）');
+      const { data, error } = await auth.signInAnonymously();
+      if (error) {
+        log('❌ 步骤3失败：匿名登录报错<br>' + JSON.stringify(error));
+      } else {
+        log('✅ 步骤3成功：匿名登录成功！<br>' + JSON.stringify(data));
+
+        log('正在尝试写入一条测试数据...（步骤4）');
+        const db = app.database();
+        try {
+          const res = await db.collection('coaches').add({ name: '__debug_test__', status: 'active', createdAt: Date.now() });
+          log('✅ 步骤4成功：写入数据库成功！文档ID: ' + JSON.stringify(res));
+        } catch (dbErr) {
+          log('❌ 步骤4失败：写入数据库报错<br>' + (dbErr && dbErr.message ? dbErr.message : JSON.stringify(dbErr)));
+        }
+      }
+    } catch (e) {
+      log('❌ 出错：' + (e && e.message ? e.message : JSON.stringify(e)));
+    }
+  });
+</script>
+</body>
+</html>
