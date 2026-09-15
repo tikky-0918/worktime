@@ -58,6 +58,15 @@ const DB = {
   }
 };
 
+// 写入/同步失败时用醒目的弹窗提示（而不是一闪而过的小提示），
+// 避免"数据其实没保存成功，但用户没注意到"的情况——
+// 常见原因是 Firebase 后台的安全规则或匿名登录没配置好。
+function reportError(action, err) {
+  console.error(action, err);
+  const detail = (err && err.message) ? err.message : String(err);
+  alert(`${action}失败\n\n错误信息：${detail}\n\n请把这个提示截图发给开发者。`);
+}
+
 // 建立实时监听：任何一台手机的数据变化都会自动推送过来并刷新当前页面
 function startRealtimeSync() {
   onSnapshot(collection(fsdb, COACHES_COL), snapshot => {
@@ -66,19 +75,13 @@ function startRealtimeSync() {
     if (currentView === 'entry') { renderCoaches(); renderCoachSelect(); }
     if (currentView === 'home') renderHome();
     if (currentView === 'stats') renderStats();
-  }, err => {
-    console.error(err);
-    toast('云端连接失败，请检查网络');
-  });
+  }, err => reportError('云端数据同步', err));
 
   onSnapshot(collection(fsdb, RECORDS_COL), snapshot => {
     records = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
     if (currentView === 'home') renderHome();
     if (currentView === 'stats') renderStats();
-  }, err => {
-    console.error(err);
-    toast('云端连接失败，请检查网络');
-  });
+  }, err => reportError('云端数据同步', err));
 }
 
 // ---------------------------------------------------------------------------
@@ -461,11 +464,11 @@ entryForm.addEventListener('submit', (e) => {
   // 不等待云端写入完成再刷新界面：断网时也能立即记录，联网后自动补传同步
   if (editingId) {
     rec.id = editingId;
-    DB.updateRecord(rec).catch(err => toast('更新失败：' + err.message));
+    DB.updateRecord(rec).catch(err => reportError('更新记录', err));
     toast('已更新');
     switchView('home');
   } else {
-    DB.addRecord(rec).catch(err => toast('保存失败：' + err.message));
+    DB.addRecord(rec).catch(err => reportError('保存记录', err));
     toast('已保存，可继续录入');
     headcountInput.value = 1;
     durationInput.value = 1;
@@ -476,7 +479,7 @@ entryForm.addEventListener('submit', (e) => {
 deleteRecordBtn.addEventListener('click', () => {
   if (!editingId) return;
   if (!confirm('确定删除这条记录？删除后无法恢复。')) return;
-  DB.deleteRecord(editingId).catch(err => toast('删除失败：' + err.message));
+  DB.deleteRecord(editingId).catch(err => reportError('删除记录', err));
   toast('已删除');
   switchView('home');
 });
@@ -499,7 +502,7 @@ toggleCoachManageBtn.addEventListener('click', () => {
 addCoachBtn.addEventListener('click', () => {
   const name = newCoachName.value.trim();
   if (!name) { toast('请输入教练姓名'); return; }
-  DB.addCoach(name).catch(err => toast('添加失败：' + err.message));
+  DB.addCoach(name).catch(err => reportError('添加教练', err));
   newCoachName.value = '';
   toast('已添加教练');
 });
@@ -530,7 +533,7 @@ function renderCoaches() {
       const name = prompt('修改教练姓名', c.name);
       if (name && name.trim()) {
         c.name = name.trim();
-        DB.updateCoach(c).catch(err => toast('更新失败：' + err.message));
+        DB.updateCoach(c).catch(err => reportError('修改教练', err));
         toast('已更新');
       }
     });
@@ -540,7 +543,7 @@ function renderCoaches() {
       const id = btn.closest('.coach-item').dataset.id;
       const c = coaches.find(c => c.id === id);
       c.status = c.status === 'active' ? 'disabled' : 'active';
-      DB.updateCoach(c).catch(err => toast('更新失败：' + err.message));
+      DB.updateCoach(c).catch(err => reportError('修改教练状态', err));
       toast(c.status === 'active' ? '已启用' : '已停用（历史数据保留）');
     });
   });
@@ -554,7 +557,7 @@ function renderCoaches() {
         return;
       }
       if (!confirm(`确定删除教练"${c.name}"？该教练目前没有任何课程记录，删除后无法恢复。`)) return;
-      DB.deleteCoach(id).catch(err => toast('删除失败：' + err.message));
+      DB.deleteCoach(id).catch(err => reportError('删除教练', err));
       toast('已删除');
     });
   });
@@ -575,7 +578,7 @@ if (migrateLocalBtn) {
       localStorage.setItem('cloudMigrated_v1', '1');
       migrateLocalBtn.style.display = 'none';
     } catch (err) {
-      toast('导入失败：' + err.message);
+      reportError('导入本机历史数据', err);
       migrateLocalBtn.disabled = false;
       migrateLocalBtn.textContent = '导入本机历史数据到云端（仅需一次）';
     }
@@ -696,7 +699,7 @@ function renderStats() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (!confirm('确定删除这条记录？')) return;
-      DB.deleteRecord(btn.dataset.delId).catch(err => toast('删除失败：' + err.message));
+      DB.deleteRecord(btn.dataset.delId).catch(err => reportError('删除记录', err));
       toast('已删除');
     });
   });
@@ -850,8 +853,7 @@ async function init() {
   try {
     await signInAnonymously(auth);
   } catch (err) {
-    console.error(err);
-    toast('云端登录失败，请检查网络后刷新重试');
+    reportError('云端登录', err);
     return;
   }
   startRealtimeSync();
