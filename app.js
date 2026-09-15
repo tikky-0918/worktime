@@ -1,6 +1,6 @@
 /* app.js — 教练课时统计 PWA 核心逻辑（腾讯云开发 CloudBase 实时同步，多台手机共享数据） */
 
-import cloudbase from "./js/cloudbase.bundle.js?v=13";
+import cloudbase from "./js/cloudbase.bundle.js?v=14";
 
 // ---------------------------------------------------------------------------
 // CloudBase 初始化：所有手机共用同一个云端数据库，
@@ -8,7 +8,7 @@ import cloudbase from "./js/cloudbase.bundle.js?v=13";
 // ---------------------------------------------------------------------------
 const CLOUDBASE_ENV = "worktime-d0g4mlkmp3769259b";
 
-const cbApp = cloudbase.init({ env: CLOUDBASE_ENV });
+const cbApp = cloudbase.init({ env: CLOUDBASE_ENV, region: "ap-shanghai" });
 const cbAuth = cbApp.auth({ persistence: 'local' });
 const cbdb = cbApp.database();
 
