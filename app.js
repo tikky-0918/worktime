@@ -1,88 +1,80 @@
-/* app.js — 教练课时统计 PWA 核心逻辑（Firebase Firestore 实时同步，多台手机共享数据） */
-
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
-import {
-  getAuth, signInAnonymously
-} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-import {
-  getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot,
-  enableIndexedDbPersistence
-} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+/* app.js — 教练课时统计 PWA 核心逻辑（无第三方框架依赖） */
 
 // ---------------------------------------------------------------------------
-// Firebase 初始化：所有手机共用同一个云端 Firestore 数据库，
-// 任意一台手机的增删改都会实时推送到其他所有手机。
+// IndexedDB 封装
 // ---------------------------------------------------------------------------
-const firebaseConfig = {
-  apiKey: "AIzaSyDO8pAAMa8Z0ONCBghzP5HTB3bgqel57Vo",
-  authDomain: "worktime-d692b.firebaseapp.com",
-  projectId: "worktime-d692b",
-  storageBucket: "worktime-d692b.firebasestorage.app",
-  messagingSenderId: "781497875127",
-  appId: "1:781497875127:web:6affcb8637b6b71797eb32"
-};
+const DB_NAME = 'coachStatsDB';
+const DB_VERSION = 1;
+let dbInstance = null;
 
-const fbApp = initializeApp(firebaseConfig);
-const auth = getAuth(fbApp);
-const fsdb = getFirestore(fbApp);
-// 开启本地离线缓存：断网时仍可正常记录，联网后自动补传。
-// 多个标签页同时打开或浏览器不支持时会失败，静默忽略即可（仍可在线使用）。
-enableIndexedDbPersistence(fsdb).catch(() => {});
-
-const COACHES_COL = 'coaches';
-const RECORDS_COL = 'records';
-
+function openDB() {
+  if (dbInstance) return Promise.resolve(dbInstance);
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('coaches')) {
+        const s = db.createObjectStore('coaches', { keyPath: 'id', autoIncrement: true });
+        s.createIndex('status', 'status', { unique: false });
+      }
+      if (!db.objectStoreNames.contains('records')) {
+        const s = db.createObjectStore('records', { keyPath: 'id', autoIncrement: true });
+        s.createIndex('coachId', 'coachId', { unique: false });
+        s.createIndex('date', 'date', { unique: false });
+      }
+    };
+    req.onsuccess = (e) => { dbInstance = e.target.result; resolve(dbInstance); };
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+function storeTx(name, mode) {
+  return openDB().then(db => db.transaction(name, mode).objectStore(name));
+}
 const DB = {
   addCoach(name) {
-    return addDoc(collection(fsdb, COACHES_COL), { name, status: 'active', createdAt: Date.now() });
+    return storeTx('coaches', 'readwrite').then(s => new Promise((res, rej) => {
+      const r = s.add({ name, status: 'active', createdAt: Date.now() });
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    }));
   },
   updateCoach(coach) {
-    const { id, ...data } = coach;
-    return updateDoc(doc(fsdb, COACHES_COL, id), data);
+    return storeTx('coaches', 'readwrite').then(s => new Promise((res, rej) => {
+      const r = s.put(coach); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    }));
   },
-  addRecord(rec) {
-    rec.createdAt = Date.now();
-    rec.updatedAt = Date.now();
-    return addDoc(collection(fsdb, RECORDS_COL), rec);
-  },
-  updateRecord(rec) {
-    const { id, ...data } = rec;
-    data.updatedAt = Date.now();
-    return updateDoc(doc(fsdb, RECORDS_COL, id), data);
-  },
-  deleteRecord(id) {
-    return deleteDoc(doc(fsdb, RECORDS_COL, id));
+  getAllCoaches() {
+    return storeTx('coaches', 'readonly').then(s => new Promise((res, rej) => {
+      const r = s.getAll(); r.onsuccess = () => res(r.result.sort((a, b) => a.id - b.id)); r.onerror = () => rej(r.error);
+    }));
   },
   deleteCoach(id) {
-    return deleteDoc(doc(fsdb, COACHES_COL, id));
+    return storeTx('coaches', 'readwrite').then(s => new Promise((res, rej) => {
+      const r = s.delete(id); r.onsuccess = () => res(); r.onerror = () => rej(r.error);
+    }));
+  },
+  addRecord(rec) {
+    return storeTx('records', 'readwrite').then(s => new Promise((res, rej) => {
+      rec.createdAt = Date.now(); rec.updatedAt = Date.now();
+      const r = s.add(rec); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    }));
+  },
+  updateRecord(rec) {
+    return storeTx('records', 'readwrite').then(s => new Promise((res, rej) => {
+      rec.updatedAt = Date.now();
+      const r = s.put(rec); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    }));
+  },
+  deleteRecord(id) {
+    return storeTx('records', 'readwrite').then(s => new Promise((res, rej) => {
+      const r = s.delete(id); r.onsuccess = () => res(); r.onerror = () => rej(r.error);
+    }));
+  },
+  getAllRecords() {
+    return storeTx('records', 'readonly').then(s => new Promise((res, rej) => {
+      const r = s.getAll(); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    }));
   }
 };
-
-// 写入/同步失败时用醒目的弹窗提示（而不是一闪而过的小提示），
-// 避免"数据其实没保存成功，但用户没注意到"的情况——
-// 常见原因是 Firebase 后台的安全规则或匿名登录没配置好。
-function reportError(action, err) {
-  console.error(action, err);
-  const detail = (err && err.message) ? err.message : String(err);
-  alert(`${action}失败\n\n错误信息：${detail}\n\n请把这个提示截图发给开发者。`);
-}
-
-// 建立实时监听：任何一台手机的数据变化都会自动推送过来并刷新当前页面
-function startRealtimeSync() {
-  onSnapshot(collection(fsdb, COACHES_COL), snapshot => {
-    coaches = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
-      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-    if (currentView === 'entry') { renderCoaches(); renderCoachSelect(); }
-    if (currentView === 'home') renderHome();
-    if (currentView === 'stats') renderStats();
-  }, err => reportError('云端数据同步', err));
-
-  onSnapshot(collection(fsdb, RECORDS_COL), snapshot => {
-    records = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-    if (currentView === 'home') renderHome();
-    if (currentView === 'stats') renderStats();
-  }, err => reportError('云端数据同步', err));
-}
 
 // ---------------------------------------------------------------------------
 // 全局状态
@@ -258,7 +250,7 @@ function renderHome() {
     }).join('');
     coachOverviewList.querySelectorAll('.coach-overview-item').forEach(el => {
       el.addEventListener('click', () => {
-        openDetailCoachId = el.dataset.id;
+        openDetailCoachId = Number(el.dataset.id);
         switchView('stats');
       });
     });
@@ -273,7 +265,7 @@ function renderHome() {
     listEl.innerHTML = todays.map(r => recordItemHTML(r)).join('');
     listEl.querySelectorAll('.record-item').forEach(el => {
       el.addEventListener('click', () => {
-        const rec = records.find(r => r.id === el.dataset.id);
+        const rec = records.find(r => r.id === Number(el.dataset.id));
         if (rec) enterEditMode(rec);
       });
     });
@@ -281,7 +273,7 @@ function renderHome() {
 }
 
 function recordItemHTML(r) {
-  const valueText = r.form === 'group' ? `${fmtNum(r.headcount)} 人次` : `${fmtNum(r.hours)} h`;
+  const valueText = r.form === 'group' ? `${fmtNum(r.headcount)} 人` : `${fmtNum(r.hours)} h`;
   return `
     <div class="record-item" data-id="${r.id}">
       <div class="ri-main">
@@ -327,11 +319,11 @@ function renderCoachSelect(includeCoachId) {
     list.map(c => `<option value="${c.id}">${c.name}${c.status === 'disabled' ? '（已停用）' : ''}</option>`)
   );
   coachSelect.innerHTML = options.join('');
-  coachSelect.value = selectedCoachId || '';
+  coachSelect.value = selectedCoachId ? String(selectedCoachId) : '';
 }
 
 coachSelect.addEventListener('change', () => {
-  selectedCoachId = coachSelect.value || null;
+  selectedCoachId = coachSelect.value ? Number(coachSelect.value) : null;
 });
 
 function setToggle(container, value) {
@@ -405,7 +397,7 @@ function enterEditMode(rec) {
   switchView('entry', { editing: true });
 }
 
-entryForm.addEventListener('submit', (e) => {
+entryForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!selectedCoachId) { toast('请先选择教练'); return; }
   if (!dateInput.value) { toast('请选择日期'); return; }
@@ -420,26 +412,28 @@ entryForm.addEventListener('submit', (e) => {
     note: noteInput.value.trim()
   };
 
-  // 不等待云端写入完成再刷新界面：断网时也能立即记录，联网后自动补传同步
   if (editingId) {
     rec.id = editingId;
-    DB.updateRecord(rec).catch(err => reportError('更新记录', err));
+    await DB.updateRecord(rec);
     toast('已更新');
+    await reloadRecords();
     switchView('home');
   } else {
-    DB.addRecord(rec).catch(err => reportError('保存记录', err));
+    await DB.addRecord(rec);
     toast('已保存，可继续录入');
+    await reloadRecords();
     headcountInput.value = 1;
     durationInput.value = 1;
     noteInput.value = '';
   }
 });
 
-deleteRecordBtn.addEventListener('click', () => {
+deleteRecordBtn.addEventListener('click', async () => {
   if (!editingId) return;
   if (!confirm('确定删除这条记录？删除后无法恢复。')) return;
-  DB.deleteRecord(editingId).catch(err => reportError('删除记录', err));
+  await DB.deleteRecord(editingId);
   toast('已删除');
+  await reloadRecords();
   switchView('home');
 });
 
@@ -457,12 +451,15 @@ toggleCoachManageBtn.addEventListener('click', () => {
   coachManageArrow.textContent = coachManageOpen ? '▴' : '▾';
 });
 
-addCoachBtn.addEventListener('click', () => {
+addCoachBtn.addEventListener('click', async () => {
   const name = newCoachName.value.trim();
   if (!name) { toast('请输入教练姓名'); return; }
-  DB.addCoach(name).catch(err => reportError('添加教练', err));
+  await DB.addCoach(name);
   newCoachName.value = '';
   toast('已添加教练');
+  await reloadCoaches();
+  renderCoaches();
+  renderCoachSelect();
 });
 newCoachName.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addCoachBtn.click(); } });
 
@@ -485,29 +482,35 @@ function renderCoaches() {
     </div>`).join('');
 
   coachListEl.querySelectorAll('[data-action="rename"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = btn.closest('.coach-item').dataset.id;
+    btn.addEventListener('click', async () => {
+      const id = Number(btn.closest('.coach-item').dataset.id);
       const c = coaches.find(c => c.id === id);
       const name = prompt('修改教练姓名', c.name);
       if (name && name.trim()) {
         c.name = name.trim();
-        DB.updateCoach(c).catch(err => reportError('修改教练', err));
+        await DB.updateCoach(c);
         toast('已更新');
+        await reloadCoaches();
+        renderCoaches();
+        renderCoachSelect();
       }
     });
   });
   coachListEl.querySelectorAll('[data-action="toggle"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = btn.closest('.coach-item').dataset.id;
+    btn.addEventListener('click', async () => {
+      const id = Number(btn.closest('.coach-item').dataset.id);
       const c = coaches.find(c => c.id === id);
       c.status = c.status === 'active' ? 'disabled' : 'active';
-      DB.updateCoach(c).catch(err => reportError('修改教练状态', err));
+      await DB.updateCoach(c);
       toast(c.status === 'active' ? '已启用' : '已停用（历史数据保留）');
+      await reloadCoaches();
+      renderCoaches();
+      renderCoachSelect();
     });
   });
   coachListEl.querySelectorAll('[data-action="delete"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = btn.closest('.coach-item').dataset.id;
+    btn.addEventListener('click', async () => {
+      const id = Number(btn.closest('.coach-item').dataset.id);
       const c = coaches.find(c => c.id === id);
       const recordCount = records.filter(r => r.coachId === id).length;
       if (recordCount > 0) {
@@ -515,8 +518,11 @@ function renderCoaches() {
         return;
       }
       if (!confirm(`确定删除教练"${c.name}"？该教练目前没有任何课程记录，删除后无法恢复。`)) return;
-      DB.deleteCoach(id).catch(err => reportError('删除教练', err));
+      await DB.deleteCoach(id);
       toast('已删除');
+      await reloadCoaches();
+      renderCoaches();
+      renderCoachSelect();
     });
   });
 }
@@ -619,7 +625,7 @@ function renderStats() {
 
   statsTableWrap.querySelectorAll('.stats-row').forEach(row => {
     row.addEventListener('click', () => {
-      const id = row.dataset.id;
+      const id = Number(row.dataset.id);
       openDetailCoachId = openDetailCoachId === id ? null : id;
       renderStats();
     });
@@ -627,16 +633,18 @@ function renderStats() {
   statsTableWrap.querySelectorAll('[data-edit-id]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const rec = records.find(r => r.id === btn.dataset.editId);
+      const rec = records.find(r => r.id === Number(btn.dataset.editId));
       if (rec) enterEditMode(rec);
     });
   });
   statsTableWrap.querySelectorAll('[data-del-id]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       if (!confirm('确定删除这条记录？')) return;
-      DB.deleteRecord(btn.dataset.delId).catch(err => reportError('删除记录', err));
+      await DB.deleteRecord(Number(btn.dataset.delId));
       toast('已删除');
+      await reloadRecords();
+      renderStats();
     });
   });
 
@@ -651,7 +659,7 @@ function renderDetailPanel(coachId, start, end) {
     .sort((a, b) => a.date.localeCompare(b.date));
   if (list.length === 0) return `<div class="detail-panel">该时间段暂无记录</div>`;
   const rowsHtml = list.map(r => {
-    const val = r.form === 'group' ? `${fmtNum(r.headcount)}人次` : `${fmtNum(r.hours)}h`;
+    const val = r.form === 'group' ? `${fmtNum(r.headcount)}人` : `${fmtNum(r.hours)}h`;
     return `<div class="dp-row">
       <span>${r.date} · ${NATURE_LABEL[r.nature]}·${FORM_LABEL[r.form]}${r.note ? '（' + r.note + '）' : ''}</span>
       <span>
@@ -731,7 +739,7 @@ exportBtn.addEventListener('click', () => {
   const start = exportStart.value, end = exportEnd.value;
   if (!start || !end) { toast('请选择导出时间段'); return; }
   if (start > end) { toast('起始日期不能晚于结束日期'); return; }
-  const checked = Array.from(exportCoachChecks.querySelectorAll('input[type=checkbox]:checked')).map(i => i.value);
+  const checked = Array.from(exportCoachChecks.querySelectorAll('input[type=checkbox]:checked')).map(i => Number(i.value));
   if (checked.length === 0) { toast('请至少选择一位教练'); return; }
 
   const selectedCoaches = coaches.filter(c => checked.includes(c.id));
@@ -759,7 +767,7 @@ exportBtn.addEventListener('click', () => {
   XLSX.utils.book_append_sheet(wb, ws1, '月度汇总');
 
   if (exportContent === 'full') {
-    const detailAOA = [['日期', '教练', '课程性质', '课程形式', '人次(小班课)', '时长-小时(私教课)', '备注']];
+    const detailAOA = [['日期', '教练', '课程性质', '课程形式', '人数(小班课)', '时长-小时(私教课)', '备注']];
     records.filter(r => r.date >= start && r.date <= end && checked.includes(r.coachId))
       .sort((a, b) => a.date.localeCompare(b.date))
       .forEach(r => {
@@ -782,16 +790,19 @@ exportBtn.addEventListener('click', () => {
 // ---------------------------------------------------------------------------
 // 初始化
 // ---------------------------------------------------------------------------
+async function reloadCoaches() { coaches = await DB.getAllCoaches(); }
+async function reloadRecords() {
+  records = await DB.getAllRecords();
+  if (currentView === 'home') renderHome();
+  if (currentView === 'stats') renderStats();
+}
+
 async function init() {
+  await openDB();
+  coaches = await DB.getAllCoaches();
+  records = await DB.getAllRecords();
   dateInput.value = todayStr();
   resetEntryForNew();
   renderHome();
-  try {
-    await signInAnonymously(auth);
-  } catch (err) {
-    reportError('云端登录', err);
-    return;
-  }
-  startRealtimeSync();
 }
 init();
